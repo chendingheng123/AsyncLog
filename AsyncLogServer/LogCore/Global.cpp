@@ -21,6 +21,14 @@ namespace AsyncLogSDK
 		return sConvertRes;
 	}
 
+	std::wstring multiByteConvertWideChar(const std::string& str)
+	{
+		int wsLen = MultiByteToWideChar(CP_UTF8, 0, &str[0], static_cast<int>(str.size()), NULL, 0);
+		std::wstring wsResult(wsLen, 0);
+		MultiByteToWideChar(CP_UTF8, 0, &str[0], static_cast<int>(str.size()), &wsResult[0], wsLen);
+		return wsResult;
+	}
+
 	std::wstring getCurrentModulePath()
 	{
 		WCHAR szModulePath[MAX_PATH] = { '\0' };
@@ -61,5 +69,11 @@ namespace AsyncLogSDK
 			}
 		} while (FindNextFileW(hFileHandle, &winFileData) != 0);
 		FindClose(hFileHandle);
+	}
+
+	bool directionaryExist(const std::string& dirPath)
+	{
+		DWORD attribute = GetFileAttributes(dirPath.c_str());
+		return attribute != INVALID_FILE_ATTRIBUTES && (attribute & FILE_ATTRIBUTE_DIRECTORY);
 	}
 }

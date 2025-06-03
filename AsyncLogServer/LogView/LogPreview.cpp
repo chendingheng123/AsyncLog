@@ -1,8 +1,8 @@
-#include "Logger/AsyncLogger.h"
-#include "LogTool/LogAlgorithm.h"
-#include "LogPreview.h"
+#include "../Logger/AsyncLogger.h"
 #include <fstream>
 #include <iterator>
+#include "../LogTool/LogAlgorithm.h"
+#include "LogPreview.h"
 
 using namespace AsyncLogSDK;
 
@@ -12,6 +12,8 @@ CLogPreview::CLogPreview()
 
 CLogPreview::~CLogPreview()
 {
+	if (spQueryThread->joinable())
+		spQueryThread->join();
 }
 
 void CLogPreview::queryLog(LogQueryStu& queryStu, LogViewCallBack& logViewCB)

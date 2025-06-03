@@ -5,9 +5,9 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "InternalName", "AsyncLog"
+            VALUE "InternalName", "AsyncLogServer"
             VALUE "LegalCopyright", "边城梦溪"
-            VALUE "ProductName", "AsyncLog"
+            VALUE "ProductName", "AsyncLogServer"
 			VALUE "ProductVersion", "1.2.1.1"
         END
     END

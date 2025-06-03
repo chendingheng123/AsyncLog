@@ -123,8 +123,10 @@ namespace AsyncLogSDK
 	};
 
 	std::string wideCharConvertMultiByte(LPCWSTR lpcwStr);
+	std::wstring multiByteConvertWideChar(const std::string& str);
 	std::wstring getCurrentModulePath();
 	void searchFilesInDir(LPCWSTR sDirPath, std::vector<FileInfo>& fileInfoList);
+	bool directionaryExist(const std::string& dirPath);
 }
 
 #endif //!C_GLOBAL_H_

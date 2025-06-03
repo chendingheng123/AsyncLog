@@ -1,6 +1,7 @@
 #include "AsyncLoggerImpl.h"
 #include <algorithm>
 #include <functional>
+#include "../LogTool/LogAlgorithm.h"
 using namespace AsyncLogSDK;
 
 CAsyncLoggerImpl::CAsyncLoggerImpl()
@@ -23,7 +24,7 @@ void CAsyncLoggerImpl::logConsumeThread()
 
 			mConsumeCon.wait(lk);
 		}
-	
+
 		for (const auto& log : mSortedLogList)
 		{
 			if (!log.logData.empty())
@@ -31,7 +32,10 @@ void CAsyncLoggerImpl::logConsumeThread()
 				if (EI_FULL_SIZE == writeFile(log.logData))
 				{
 					//当前日志文件被写满，通知Bak线程去新建一个日志文件，不能阻塞当前线程的执行流
-					mReadyLogList = std::deque<LogDataBlock>(mSortedLogList.begin() + mWriteIndex, mSortedLogList.end());
+					{
+						std::unique_lock<std::mutex> lk(mReadLogMtx);
+						mReadyLogList = std::deque<LogDataBlock>(mSortedLogList.begin() + mWriteIndex, mSortedLogList.end());
+					}
 					mWriteIndex = 0;
 					SetEvent(mBakEvent);
 					break;
@@ -49,17 +53,8 @@ void CAsyncLoggerImpl::logBakThread()
 	while (::WaitForSingleObject(mExitSem, 0) != WAIT_OBJECT_0)
 	{
 		std::vector<FileInfo> fileInfoList;
-		getCacheFileList(fileInfoList);
-		if (fileInfoList.size() > MAX_LOG_FILE_NUM)
+		if (getCacheFileList(fileInfoList) && fileInfoList.size() > MAX_LOG_FILE_NUM)
 		{
-			std::sort(fileInfoList.begin(), fileInfoList.end(),
-				[=](const FileInfo& file1, const FileInfo& file2)  //对日志文件按照时间做个升序排列
-				{
-					return (file1.fileTime.dwHighDateTime < file2.fileTime.dwHighDateTime) ||
-						(file1.fileTime.dwHighDateTime == file2.fileTime.dwHighDateTime
-							&& file1.fileTime.dwLowDateTime < file2.fileTime.dwLowDateTime);
-				});
-
 			//删除时间较早iDeleteFileNum个日志文件
 			int iDeleteFileNum = fileInfoList.size() - MAX_LOG_FILE_NUM;
 			for (int i = 0; i < iDeleteFileNum; i++)
@@ -70,15 +65,18 @@ void CAsyncLoggerImpl::logBakThread()
 		if (::WaitForSingleObject(mBakEvent, 0) == WAIT_OBJECT_0)
 		{
 			createNewLogFile();
-			for (const auto& log : mReadyLogList)
 			{
-				if (!log.logData.empty())
+				std::unique_lock<std::mutex> lk(mReadLogMtx);
+				for (const auto& log : mReadyLogList)
 				{
-					if (writeFile(log.logData) != EI_NO_ERROR)
-						break;
+					if (!log.logData.empty())
+					{
+						if (writeFile(log.logData) != EI_NO_ERROR)
+							break;
+					}
 				}
+				mReadyLogList.clear();
 			}
-			mReadyLogList.clear();
 			ResetEvent(mBakEvent);
 		}
 		Sleep(1);
@@ -90,10 +88,27 @@ void CAsyncLoggerImpl::getCacheLogList(std::list<LogDataBlock>& cachedLogList)
 	cachedLogList = std::list<LogDataBlock>(mCachedLogList.begin(), mCachedLogList.end());
 }
 
-void CAsyncLoggerImpl::getCacheFileList(std::vector<FileInfo>& fileInfoList)
+bool CAsyncLoggerImpl::getCacheFileList(std::vector<FileInfo>& fileInfoList)
 {
 	std::wstring wsModulePath = getCurrentModulePath();
-	searchFilesInDir(wsModulePath.c_str(), fileInfoList);
+	std::string sLogDir = wideCharConvertMultiByte(wsModulePath.c_str());
+	//拼上当前进程名
+	char processName[128] = { 0 };
+	std::string sProcessName;
+	if (::GetModuleFileName(NULL, processName, 128))
+		sProcessName = processName;
+	if (sProcessName.empty())
+		return false;
+
+	if (stringContain(sProcessName, sLogDir) >= 0)
+		sProcessName = sProcessName.substr(sLogDir.size(), sProcessName.size() - 1);
+	size_t index = sProcessName.find_last_of(".");
+	if (index != std::string::npos)
+		sProcessName = sProcessName.substr(0, index);
+	sLogDir.append(sProcessName);
+
+	std::wstring wsLogDir = multiByteConvertWideChar(sLogDir);
+	searchFilesInDir(wsLogDir.c_str(), fileInfoList);
 	if (fileInfoList.size() > MAX_LOG_FILE_NUM)
 	{
 		std::sort(fileInfoList.begin(), fileInfoList.end(),
@@ -103,13 +118,8 @@ void CAsyncLoggerImpl::getCacheFileList(std::vector<FileInfo>& fileInfoList)
 					(file1.fileTime.dwHighDateTime == file2.fileTime.dwHighDateTime
 						&& file1.fileTime.dwLowDateTime < file2.fileTime.dwLowDateTime);
 			});
-
-		int iDeleteFileNum = fileInfoList.size() - MAX_LOG_FILE_NUM;
-		for (int i = 0; i < iDeleteFileNum; i++)
-			DeleteFileW(fileInfoList[i].filePath.c_str());
-		fileInfoList.erase(fileInfoList.begin(), fileInfoList.begin() + iDeleteFileNum);
 	}
-	fileInfoList = fileInfoList;
+	return true;
 }
 
 void CAsyncLoggerImpl::createNewLogFile()
@@ -123,7 +133,22 @@ void CAsyncLoggerImpl::createNewLogFile()
 	std::string logFileName(szLogName);
 	std::wstring wsModulePath = getCurrentModulePath();
 	std::string sLogPath = wideCharConvertMultiByte(wsModulePath.c_str());
+	//拼上当前进程名
+	char processName[128] = { 0 };
+	::GetModuleFileName(NULL, processName, 128);
+	std::string sProcessName = processName;
+	if (stringContain(sProcessName, sLogPath) >= 0)
+		sProcessName = sProcessName.substr(sLogPath.size(), sProcessName.size() - 1);
+	size_t index = sProcessName.find_last_of(".");
+	if (index != std::string::npos)
+		sProcessName = sProcessName.substr(0, index);
+
+	sLogPath.append(sProcessName);
+	if (!directionaryExist(sLogPath))
+		::CreateDirectory(sLogPath.c_str(), NULL);
+
 	sLogPath.append(logFileName.c_str());
+	std::unique_lock<std::mutex> lk(mFileHandleMtx);
 	mFile = ::CreateFile(sLogPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 
@@ -136,20 +161,13 @@ bool CAsyncLoggerImpl::initLogger()
 	mConsumLogThreadVec.resize(mConsumeThreadCnt);
 	for (int i = 0; i < mConsumeThreadCnt; ++i)
 		mConsumLogThreadVec[i].reset(new std::thread(std::bind(&CAsyncLoggerImpl::logConsumeThread, this)));
-	
+
 	std::vector<FileInfo> fileInfoList;
-	getCacheFileList(fileInfoList);
+	if (!getCacheFileList(fileInfoList))
+		return false;
 
 	if (fileInfoList.size() > MAX_LOG_FILE_NUM)
 	{
-		std::sort(fileInfoList.begin(), fileInfoList.end(),
-			[=](const FileInfo& file1, const FileInfo& file2)
-		{
-				return (file1.fileTime.dwHighDateTime < file2.fileTime.dwHighDateTime) ||
-					(file1.fileTime.dwHighDateTime == file2.fileTime.dwHighDateTime 
-						&& file1.fileTime.dwLowDateTime < file2.fileTime.dwLowDateTime);
-		});
-
 		int iDeleteFileNum = fileInfoList.size() - MAX_LOG_FILE_NUM;
 		for (int i = 0; i < iDeleteFileNum; i++)
 			DeleteFileW(fileInfoList[i].filePath.c_str());
@@ -171,7 +189,7 @@ bool CAsyncLoggerImpl::initLogger()
 void CAsyncLoggerImpl::uninitLogger()
 {
 	//把缓存的日志给刷到磁盘中去
-	if(mReadyLogList.size() > 0)
+	if (mReadyLogList.size() > 0)
 		SetEvent(mBakEvent);
 
 	ReleaseSemaphore(mExitSem, MAX_LOG_CONSUME_NUM + 1, NULL);
@@ -199,6 +217,16 @@ void CAsyncLoggerImpl::uninitLogger()
 		++iWriteIndex;
 	}
 
+	//日志文件数量始终维持在10个
+	std::vector<FileInfo> fileInfoList;
+	getCacheFileList(fileInfoList);
+	if (fileInfoList.size() > MAX_LOG_FILE_NUM)
+	{
+		int iDeleteFileNum = fileInfoList.size() - MAX_LOG_FILE_NUM;
+		for (int i = 0; i < iDeleteFileNum; i++)
+			DeleteFileW(fileInfoList[i].filePath.c_str());
+	}
+
 	if (mBakThread->joinable())
 		mBakThread->join();
 
@@ -208,14 +236,22 @@ void CAsyncLoggerImpl::uninitLogger()
 			iter->join();
 	}
 
-	if (mFile != INVALID_HANDLE_VALUE)
-		::CloseHandle(mFile);
+	{
+		std::unique_lock<std::mutex> lk(mFileHandleMtx);
+		if (mFile != INVALID_HANDLE_VALUE)
+		{
+			::CloseHandle(mFile);
+			mFile = INVALID_HANDLE_VALUE;
+		}
+	}
+
 	if (mExitSem != INVALID_HANDLE_VALUE)
 		::CloseHandle(mExitSem);
 }
 
 ErrorCode CAsyncLoggerImpl::writeFile(const std::string& sContent)
 {
+	std::unique_lock<std::mutex> lk(mFileHandleMtx);
 	if (mFile == INVALID_HANDLE_VALUE)
 		return EI_WRITE_ERROR;
 
@@ -224,6 +260,7 @@ ErrorCode CAsyncLoggerImpl::writeFile(const std::string& sContent)
 	{
 		//超过了指定大小，此时不能继续往该文件中写了，需要另写新的文件
 		::CloseHandle(mFile);
+		mFile = INVALID_HANDLE_VALUE;
 		return EI_FULL_SIZE;
 	}
 
@@ -242,9 +279,9 @@ void CAsyncLoggerImpl::writeLog(LogLevel logLevel, PCSTR functionName, int lineN
 	char szTime[128] = { 0 };
 	SYSTEMTIME st = { 0 };
 	GetLocalTime(&st);
-	sprintf(szTime, "[%d-%d-%d %d:%d:%d:%d]", 
-			st.wYear, st.wMonth, st.wDay, st.wHour, 
-			st.wMinute, st.wSecond, st.wMilliseconds);
+	sprintf(szTime, "[%d-%d-%d %d:%d:%d:%d]",
+		st.wYear, st.wMonth, st.wDay, st.wHour,
+		st.wMinute, st.wSecond, st.wMilliseconds);
 	std::string sFilterInfo(szTime);
 
 	//错误级别
@@ -291,5 +328,3 @@ void CAsyncLoggerImpl::writeLog(LogLevel logLevel, PCSTR functionName, int lineN
 		mConsumeCon.notify_one();
 	}
 }
-
-

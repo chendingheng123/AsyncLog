@@ -1,4 +1,5 @@
 #include "AsyncLogger.h"
+#include "AsyncLoggerImpl.h"
 
 using namespace AsyncLogSDK;
 
@@ -30,7 +31,7 @@ CAsyncLogger::CAsyncLogger()
 CAsyncLogger::~CAsyncLogger()
 {
 	//防止外部多个业务逻辑同时主动释放CAsyncLogger引发线程安全问题，否则单例的生命周期在dll被卸载时才结束。
-	std::unique_lock<std::mutex> lk(initMutex); 
+	std::unique_lock<std::mutex> lk(initMutex);
 	if (asyncLogImplPtr)
 	{
 		asyncLogImplPtr->uninitLogger();
@@ -66,6 +67,7 @@ void CAsyncLogger::getLogList(std::list<LogDataBlock>& cachedLogList)
 	if (asyncLogImplPtr)
 		return asyncLogImplPtr->getCacheLogList(cachedLogList);
 }
+
 void CAsyncLogger::getFileList(std::vector<FileInfo>& fileInfoList)
 {
 	std::unique_lock<std::mutex> lk(initMutex);

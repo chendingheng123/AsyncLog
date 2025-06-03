@@ -1,4 +1,4 @@
-#ifndef C_ASYNC_LOG_H_
+Ôªø#ifndef C_ASYNC_LOG_H_
 #define C_ASYNC_LOG_H_
 
 #include "AsyncLoggerImpl.h"
@@ -7,25 +7,25 @@
 namespace AsyncLogSDK
 {
 	class AsyncLogApi CAsyncLogger
-	{	
+	{
 		friend class CLogPreview;
 		static CAsyncLogger* mAsyncLogger;
-		public:
-			CAsyncLogger();
-			~CAsyncLogger();
-			static CAsyncLogger* getInstance();
-			bool init();
-			void writeLog(LogLevel logLevel, PCSTR functionName, int lineNo, PCSTR sContentFmt, ...);
+	public:
+		CAsyncLogger();
+		~CAsyncLogger();
+		static CAsyncLogger* getInstance();
+		bool init();
+		void writeLog(LogLevel logLevel, PCSTR functionName, int lineNo, PCSTR sContentFmt, ...);
 
-		protected:
-			void getLogList(std::list<LogDataBlock>& cachedLogList);
-			void getFileList(std::vector<FileInfo>& fileInfoList);
+	protected:
+		void getLogList(std::list<LogDataBlock>& cachedLogList);
+		void getFileList(std::vector<FileInfo>& fileInfoList);
 
-		private:
-			CAsyncLoggerImpl* asyncLogImplPtr = nullptr;//≤…”√PIMPLµƒ…Ëº∆ÀºœÎ
-			std::mutex initMutex;
-			bool mbInited = false;
-	}; 
+	private:
+		CAsyncLoggerImpl* asyncLogImplPtr = nullptr;//¬≤√â√ì√ÉPIMPL¬µ√Ñ√â√®¬º√Ü√ã¬º√è√´
+		std::mutex initMutex;
+		bool mbInited = false;
+	};
 }
 
 #endif // !C_ASYNC_LOG_H_
