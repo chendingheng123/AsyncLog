@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.10)
 project(AsyncLogServer VERSION 1.2.1 LANGUAGES CXX)
 SET(LIBRARY_OUTPUT_PATH ../output/lib/)
 
+if(UNIX AND NOT APPLE)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g") # 保留完整调试信息（-g）
+set(CMAKE_BUILD_TYPE Debug) #关闭优化防止符号剥离（-O0）
+elseif(WIN32)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2") #禁用优化
+endif()
+
+
 set(LogCore
 LogCore/LogCore.h
 LogCore/Global.h
@@ -29,13 +37,12 @@ set(Test
 Test/main.cpp
 )
 
-#禁用优化
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2")
-
+if(WIN32)
 #生成PDB文件
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+endif()
 
 #版本信息
 if(MSVC)

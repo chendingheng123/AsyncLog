@@ -8,11 +8,12 @@ using namespace std;
 
 void queryCallBack(QueryStatus status, const std::string& logData)
 {
-	std::cout << logData << std::endl;
-	if (status == EI_COMPLETE)
-		std::cout << "日志查询完成" << std::endl;
+    std::cout << logData << std::endl;
+    if (status == EI_COMPLETE)
+        std::cout << "日志查询完成" << std::endl;
 }
 
+#if defined(_WIN32) || defined(_WIN64)
 class LogBenchmark {
 public:
     struct TestResult {
@@ -123,8 +124,7 @@ private:
     }
 };
 
-
-int main2()
+int main()
 {
     CAsyncLogger* pLogger = CAsyncLogger::getInstance();
     if (!pLogger || !pLogger->init())
@@ -134,42 +134,52 @@ int main2()
     return 0;
 }
 
-int main()
+#elif defined(__linux__)
+
+int main_linux()
 {
-	CAsyncLogger* pLogger = CAsyncLogger::getInstance();
-	if (!pLogger || !pLogger->init())
-		return -1;
+    CAsyncLogger* pLogger = CAsyncLogger::getInstance();
+    if (!pLogger || !pLogger->init())
+        return -1;
 
-	int i = 0;
-	std::chrono::microseconds duration(1000);
-	LogQueryStu queryStu;
-	while (i < 40000)
-	{
-		if ((i % 2) != 0)
-		{
-			LOGERROR("Message: %s, count: %d", "aaa", i++);
-		}
-		else
-		{
-			LOGINFO("Message: %s, count: %d", "aaa", i++);
-		}
+    int i = 0;
+    std::chrono::microseconds duration(500);
+    LogQueryStu queryStu;
+    while (i <= 1000)
+    {
+        LOGINFO("Message: %s, count: %d", "aaa", i++);
+        if (i == 50)
+        {
+#if defined(_WIN32) || defined(_WIN64)
+            SYSTEMTIME st;
+            GetLocalTime(&st);
+            SystemTimeToFileTime(&st, &queryStu.logStartTime);
+#elif defined(__linux__)
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            double dStartTime = static_cast<double>(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+            queryStu.logStartTime = dStartTime;
+#endif
+        }
+        std::this_thread::sleep_for(duration);
+    }
 
-		if (i == 20)
-		{
-			SYSTEMTIME st;
-			GetLocalTime(&st);
-			SystemTimeToFileTime(&st, &queryStu.logStartTime);
-		}
-		//std::this_thread::sleep_for(duration);
-	}
-
-	std::function<void(QueryStatus status, const std::string&)> LogCallBack = queryCallBack;
-	CLogPreview logPreview;
-	queryStu.logLevel = EI_LOG_ERROR;
-	SYSTEMTIME st;
-	GetLocalTime(&st);
-	SystemTimeToFileTime(&st, &queryStu.logEndTime);
-	logPreview.queryLog(queryStu, LogCallBack);
-	getchar();
-	return 0;
+    std::function<void(QueryStatus status, const std::string&)> LogCallBack = queryCallBack;
+    CLogPreview logPreview;
+    queryStu.logLevel = EI_LOG_INFO;
+#if defined(_WIN32) || defined(_WIN64)
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    SystemTimeToFileTime(&st, &queryStu.logEndTime);
+#elif defined(__linux__)
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    double dEndTime = static_cast<double>(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+    queryStu.logEndTime = dEndTime;
+#endif	
+    logPreview.queryLog(queryStu, LogCallBack);
+    getchar();
+    return 0;
 }
+
+#endif

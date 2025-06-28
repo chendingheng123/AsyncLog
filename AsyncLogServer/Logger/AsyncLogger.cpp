@@ -46,17 +46,28 @@ void CAsyncLogger::writeLog(LogLevel logLevel, PCSTR functionName, int lineNo, P
 	//拼上日志正文
 	std::string sLogMsg;
 	va_list ap;
+	char logBuf[1024] = { 0 };
 	va_start(ap, sContentFmt);
+#if defined(_WIN32) || defined(_WIN64)
 	int iLogMsgLength = _vscprintf(sContentFmt, ap);
 	int iLogCapactity = static_cast<int>(sLogMsg.capacity());
 	if (iLogCapactity < iLogMsgLength + 1)
 		sLogMsg.resize((size_t)iLogMsgLength + 1);
 	vsprintf_s((char*)sLogMsg.c_str(), (size_t)iLogMsgLength + 1, sContentFmt, ap);
+#elif defined(__linux__)
+	int offset = snprintf(logBuf, sizeof(logBuf), "%d,%s,%d", logLevel, functionName, lineNo);
+	vsnprintf(logBuf + offset, sizeof(logBuf) - offset, sContentFmt, ap);
+#endif
 	va_end(ap);
-
+#if defined(__linux__)
+	char* pBuf = logBuf;
+	pBuf = pBuf + offset;
+	sLogMsg = pBuf;
+#elif defined(_WIN32) || defined(_WIN64)
 	sLogMsg = sLogMsg.substr(0, sLogMsg.length() - 1);
-	std::string sFormatMsg = "[" + sLogMsg + "]";
+#endif
 
+	std::string sFormatMsg = "[" + sLogMsg + "]";
 	if (asyncLogImplPtr)
 		return asyncLogImplPtr->writeLog(logLevel, functionName, lineNo, sFormatMsg);
 }
